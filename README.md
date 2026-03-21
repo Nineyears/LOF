@@ -44,3 +44,53 @@ npm start
 ```
 
 > `data/` 下其余 JSON 文件为运行时缓存，首次启动后自动生成，已在 `.gitignore` 中排除。
+
+## 服务器部署
+
+使用 PM2 进行进程管理。
+
+| 配置 | 值 |
+|------|------|
+| 项目路径 | `/root/data/LOF` |
+| 进程名 | `fundscope-pro` |
+| 端口 | 3456 |
+
+### PM2 服务管理
+
+```bash
+# 查看服务状态
+pm2 list
+
+# 启动服务
+pm2 start server.js --name fundscope-pro
+
+# 重启服务
+pm2 restart fundscope-pro
+
+# 停止服务
+pm2 stop fundscope-pro
+
+# 查看实时日志
+pm2 logs fundscope-pro
+
+# 查看最近 N 行日志
+pm2 logs fundscope-pro --lines 50
+
+# CPU/内存实时监控
+pm2 monit
+```
+
+- **崩溃自动重启**: PM2 默认开启，进程异常退出后自动拉起
+- **开机自启**: 已通过 `pm2 save` + `pm2 startup` 配置，服务器重启后服务自动恢复
+
+### 代码更新流程
+
+```bash
+# 本地提交推送
+git add -A && git commit -m "feat: ..." && git push
+
+# SSH 到服务器拉取并重启
+cd /root/data/LOF
+git pull origin main
+pm2 restart fundscope-pro
+```
