@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LOF溢价监控 | QDII额度追踪</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 全局背景层 -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">FundScope</span>
+        <span class="logo-badge">PRO</span>
+      </div>
+      <nav class="nav">
+        <a href="#" class="nav-link active" data-page="lof">
+          <span class="nav-icon">⟐</span>
+          LOF 溢价监控
+        </a>
+        <a href="#" class="nav-link" data-page="qdii">
+          <span class="nav-icon">⊕</span>
+          QDII 额度追踪
+        </a>
+        <a href="#" class="nav-link" data-page="enhance">
+          <span class="nav-icon">⬡</span>
+          增强基金
+        </a>
+        <a href="#" class="nav-link" data-page="futures">
+          <span class="nav-icon">⟟</span>
+          期货贴水
+        </a>
+      </nav>
+      <div class="header-right">
+        <div class="market-status" id="marketStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">检测中...</span>
+        </div>
+        <button class="theme-toggle" id="themeToggle" title="切换主题">
+          <span class="icon-sun">&#9728;</span>
+          <span class="icon-moon">&#9790;</span>
+        </button>
+        <button class="refresh-btn" id="refreshBtn" title="刷新数据">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- LOF溢价监控页面 -->
+  <main class="page page-lof active" id="pageLof">
+    <!-- 统计概览卡片 -->
+    <section class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-label">LOF 基金总数</div>
+        <div class="stat-value" id="statTotal">--</div>
+      </div>
+      <div class="stat-card stat-premium">
+        <div class="stat-label">溢价基金</div>
+        <div class="stat-value" id="statPremium">--</div>
+        <div class="stat-sub">溢价率 &gt; 0%</div>
+      </div>
+      <div class="stat-card stat-discount">
+        <div class="stat-label">折价基金</div>
+        <div class="stat-value" id="statDiscount">--</div>
+        <div class="stat-sub">溢价率 &lt; 0%</div>
+      </div>
+      <div class="stat-card stat-open">
+        <div class="stat-label">可申购</div>
+        <div class="stat-value" id="statOpen">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">最后更新</div>
+        <div class="stat-value stat-time" id="statTime">--:--</div>
+      </div>
+    </section>
+
+    <!-- 筛选与搜索 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchLof" placeholder="搜索基金代码或名称..." autocomplete="off">
+      </div>
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">全部</button>
+        <button class="filter-btn" data-filter="premium">溢价 ↑</button>
+        <button class="filter-btn" data-filter="discount">折价 ↓</button>
+        <button class="filter-btn" data-filter="purchasable">可申购</button>
+      </div>
+      <div class="sort-group">
+        <label class="sort-label">排序</label>
+        <select id="sortLof" class="sort-select">
+          <option value="premium_desc">溢价率 高→低</option>
+          <option value="premium_asc">溢价率 低→高</option>
+          <option value="abs_premium_desc">|溢价率| 高→低</option>
+          <option value="price_desc">价格 高→低</option>
+          <option value="price_asc">价格 低→高</option>
+          <option value="nav_desc">净值 高→低</option>
+          <option value="nav_asc">净值 低→高</option>
+          <option value="purchaseLimit_desc">限额 高→低</option>
+          <option value="purchaseLimit_asc">限额 低→高</option>
+          <option value="code_asc">代码 升序</option>
+          <option value="code_desc">代码 降序</option>
+        </select>
+      </div>
+    </section>
+    <!-- 收益率列选择器 + 导出 -->
+    <section class="toolbar toolbar-extra">
+      <div class="column-selector" id="lofColumnSelector">
+        <span class="column-selector-label">显示收益率:</span>
+        <button class="col-toggle-btn" data-col="ytd">今年来</button>
+        <button class="col-toggle-btn" data-col="month1">近1月</button>
+        <button class="col-toggle-btn" data-col="month3">近3月</button>
+        <button class="col-toggle-btn" data-col="month6">近半年</button>
+        <button class="col-toggle-btn" data-col="year1">近1年</button>
+      </div>
+      <button class="export-btn" id="exportLofBtn" title="导出Excel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>导出Excel</span>
+      </button>
+    </section>
+
+    <!-- 加载状态 -->
+    <div class="loading-container" id="lofLoading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">正在获取 LOF 基金数据<span class="loading-dots"></span></div>
+      <div class="loading-sub">首次加载需要获取全部申购状态，请耐心等待约 30 秒</div>
+    </div>
+
+    <!-- 缓存提示 -->
+    <div class="cache-hint" id="lofCacheHint" style="display:none;"></div>
+
+    <!-- 数据表格 -->
+    <section class="table-container" id="lofTableContainer" style="display:none;">
+      <table class="data-table" id="lofTable">
+        <thead>
+          <tr id="lofTableHead">
+            <th class="th-index">#</th>
+            <th class="th-code">基金代码</th>
+            <th class="th-name">基金名称</th>
+            <th class="th-price th-sortable" data-sort-key="price">二级市场价格</th>
+            <th class="th-nav th-sortable" data-sort-key="nav">基金净值</th>
+            <th class="th-premium th-sortable" data-sort-key="premium">溢价率</th>
+            <th class="th-status">可申购</th>
+            <th class="th-limit th-sortable" data-sort-key="purchaseLimit">申购限额</th>
+          </tr>
+        </thead>
+        <tbody id="lofTableBody">
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- QDII额度追踪页面 -->
+  <main class="page page-qdii" id="pageQdii">
+    <!-- 统计概览 -->
+    <section class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-label">QDII 基金总数</div>
+        <div class="stat-value" id="qdiiStatTotal">--</div>
+      </div>
+      <div class="stat-card stat-open">
+        <div class="stat-label">正常申购</div>
+        <div class="stat-value" id="qdiiStatOpen">--</div>
+      </div>
+      <div class="stat-card stat-premium">
+        <div class="stat-label">限额申购</div>
+        <div class="stat-value" id="qdiiStatLimited">--</div>
+      </div>
+      <div class="stat-card stat-discount">
+        <div class="stat-label">暂停申购</div>
+        <div class="stat-value" id="qdiiStatClosed">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">最后更新</div>
+        <div class="stat-value stat-time" id="qdiiStatTime">--:--</div>
+      </div>
+    </section>
+
+    <!-- 搜索和筛选 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchQdii" placeholder="搜索QDII基金代码或名称..." autocomplete="off">
+      </div>
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all" data-page="qdii">全部</button>
+        <button class="filter-btn" data-filter="open" data-page="qdii">正常申购</button>
+        <button class="filter-btn" data-filter="limited" data-page="qdii">限额申购</button>
+        <button class="filter-btn" data-filter="closed" data-page="qdii">暂停申购</button>
+        <span class="filter-divider"></span>
+        <button class="filter-btn filter-index" data-filter="nasdaq" data-page="qdii">纳斯达克</button>
+        <button class="filter-btn filter-index" data-filter="sp500" data-page="qdii">标普</button>
+      </div>
+      <div class="sort-group">
+        <label class="sort-label">排序</label>
+        <select id="sortQdii" class="sort-select">
+          <option value="purchaseLimit_desc">申购额度 高→低</option>
+          <option value="purchaseLimit_asc">申购额度 低→高</option>
+          <option value="nav_desc">净值 高→低</option>
+          <option value="nav_asc">净值 低→高</option>
+          <option value="dailyChange_desc">日涨幅 高→低</option>
+          <option value="dailyChange_asc">日涨幅 低→高</option>
+          <option value="code_asc">代码 升序</option>
+          <option value="code_desc">代码 降序</option>
+        </select>
+      </div>
+    </section>
+    <!-- 收益率列选择器 + 导出 -->
+    <section class="toolbar toolbar-extra">
+      <div class="column-selector" id="qdiiColumnSelector">
+        <span class="column-selector-label">显示收益率:</span>
+        <button class="col-toggle-btn" data-col="ytd">今年来</button>
+        <button class="col-toggle-btn" data-col="month1">近1月</button>
+        <button class="col-toggle-btn" data-col="month3">近3月</button>
+        <button class="col-toggle-btn" data-col="month6">近半年</button>
+        <button class="col-toggle-btn" data-col="year1">近1年</button>
+      </div>
+      <button class="export-btn" id="exportQdiiBtn" title="导出Excel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>导出Excel</span>
+      </button>
+    </section>
+
+    <!-- 加载状态 -->
+    <div class="loading-container" id="qdiiLoading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">正在获取 QDII 基金数据<span class="loading-dots"></span></div>
+      <div class="loading-sub">首次加载需要获取全部申购状态，请耐心等待约 1-2 分钟</div>
+    </div>
+
+    <!-- 缓存提示 -->
+    <div class="cache-hint" id="qdiiCacheHint" style="display:none;"></div>
+
+    <!-- 数据表格 -->
+    <section class="table-container" id="qdiiTableContainer" style="display:none;">
+      <table class="data-table" id="qdiiTable">
+        <thead>
+          <tr id="qdiiTableHead">
+            <th class="th-index">#</th>
+            <th class="th-code">基金代码</th>
+            <th class="th-name">基金名称</th>
+            <th class="th-nav th-sortable" data-sort-key="nav">最新净值</th>
+            <th class="th-nav-date th-sortable" data-sort-key="navDate">净值日期</th>
+            <th class="th-change th-sortable" data-sort-key="dailyChange">日涨幅</th>
+            <th class="th-status">申购状态</th>
+            <th class="th-limit th-sortable" data-sort-key="purchaseLimit">可购买额度</th>
+          </tr>
+        </thead>
+        <tbody id="qdiiTableBody">
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- 增强基金监控页面 -->
+  <main class="page page-enhance" id="pageEnhance">
+    <!-- 统计概览 -->
+    <section class="stats-bar stats-bar-enhance">
+      <div class="stat-card">
+        <div class="stat-label">监控基金总数</div>
+        <div class="stat-value" id="enhanceStatTotal">--</div>
+      </div>
+      <div class="stat-card stat-premium">
+        <div class="stat-label">今日上涨</div>
+        <div class="stat-value" id="enhanceStatUp">--</div>
+      </div>
+      <div class="stat-card stat-discount">
+        <div class="stat-label">今日下跌</div>
+        <div class="stat-value" id="enhanceStatDown">--</div>
+      </div>
+      <div class="stat-card stat-open">
+        <div class="stat-label">跟踪指数</div>
+        <div class="stat-value" id="enhanceStatGroups">--</div>
+        <div class="stat-sub">个分组</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">数据日期</div>
+        <div class="stat-value stat-time" id="enhanceStatTime">--</div>
+      </div>
+    </section>
+
+    <!-- 筛选工具栏 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchEnhance" placeholder="搜索基金代码或名称..." autocomplete="off">
+      </div>
+      <div class="filter-group" id="enhanceGroupFilter">
+        <button class="filter-btn active" data-filter="all" data-page="enhance">全部</button>
+      </div>
+      <div class="sort-group">
+        <label class="sort-label">排序</label>
+        <select id="sortEnhance" class="sort-select">
+          <option value="ytd_desc">今年来 高→低</option>
+          <option value="ytd_asc">今年来 低→高</option>
+          <option value="month1_desc">近1月 高→低</option>
+          <option value="month1_asc">近1月 低→高</option>
+          <option value="month3_desc">近3月 高→低</option>
+          <option value="month3_asc">近3月 低→高</option>
+          <option value="month6_desc">近半年 高→低</option>
+          <option value="month6_asc">近半年 低→高</option>
+          <option value="year1_desc">近1年 高→低</option>
+          <option value="year1_asc">近1年 低→高</option>
+          <option value="dailyChange_desc">日涨幅 高→低</option>
+          <option value="dailyChange_asc">日涨幅 低→高</option>
+          <option value="nav_desc">净值 高→低</option>
+          <option value="nav_asc">净值 低→高</option>
+          <option value="code_asc">代码 升序</option>
+          <option value="code_desc">代码 降序</option>
+        </select>
+      </div>
+    </section>
+    <!-- 列选择器 + 视图切换 + 导出 -->
+    <section class="toolbar toolbar-extra">
+      <div class="column-selector" id="enhanceColumnSelector">
+        <span class="column-selector-label">显示收益率:</span>
+        <button class="col-toggle-btn" data-col="ytd">今年来</button>
+        <button class="col-toggle-btn" data-col="month1">近1月</button>
+        <button class="col-toggle-btn" data-col="month3">近3月</button>
+        <button class="col-toggle-btn" data-col="month6">近半年</button>
+        <button class="col-toggle-btn" data-col="year1">近1年</button>
+      </div>
+      <div class="enhance-view-toggle">
+        <span class="column-selector-label">视图:</span>
+        <button class="col-toggle-btn active" data-view="group" id="viewGroupBtn">分组</button>
+        <button class="col-toggle-btn" data-view="flat" id="viewFlatBtn">平铺</button>
+      </div>
+      <button class="compare-mode-btn" id="compareToggleBtn" title="开启收益率对比">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        <span>收益率对比</span>
+      </button>
+      <button class="export-btn" id="exportEnhanceBtn" title="导出Excel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>导出Excel</span>
+      </button>
+    </section>
+
+    <!-- 收益率对比工具栏（开启后显示） -->
+    <section class="compare-bar" id="enhanceCompareBar" style="display:none;">
+      <div class="compare-bar-left">
+        <span class="compare-bar-label">已选择对比基金：</span>
+        <div class="compare-bar-chips" id="compareBarChips">
+          <span class="compare-hint">请在下方列表中勾选基金（最多5只）</span>
+        </div>
+      </div>
+      <div class="compare-bar-right">
+        <button class="compare-clear-btn" id="compareClearBtn">清空</button>
+        <button class="compare-draw-btn" id="compareDrawBtn" disabled>开始对比</button>
+        <button class="compare-close-btn" id="compareCloseBtn">关闭对比</button>
+      </div>
+    </section>
+
+    <!-- 加载状态 -->
+    <div class="loading-container" id="enhanceLoading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">正在获取增强基金数据<span class="loading-dots"></span></div>
+    </div>
+
+    <!-- 缓存提示 -->
+    <div class="cache-hint" id="enhanceCacheHint" style="display:none;"></div>
+
+    <!-- 数据表格 -->
+    <section class="table-container" id="enhanceTableContainer" style="display:none;">
+      <table class="data-table" id="enhanceTable">
+        <thead>
+          <tr id="enhanceTableHead">
+            <th class="th-compare-check" style="display:none;">选择</th>
+            <th class="th-index">#</th>
+            <th class="th-code">基金代码</th>
+            <th class="th-name">基金名称</th>
+            <th class="th-nav th-sortable" data-sort-key="nav">最新净值</th>
+            <th class="th-change th-sortable" data-sort-key="dailyChange">日涨幅</th>
+            <!-- 收益率列由JS动态添加 -->
+            <th class="th-enhance-note">备注</th>
+          </tr>
+        </thead>
+        <tbody id="enhanceTableBody">
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- 期货贴水监控页面 -->
+  <main class="page page-futures" id="pageFutures">
+    <!-- 风险提醒横幅 -->
+    <div class="futures-risk-banner" id="futuresRiskBanner">
+      <div class="risk-banner-icon">⚠</div>
+      <div class="risk-banner-content">
+        <strong>风险提示</strong>：股指期货为保证金交易，自带杠杆效应，方向做反会产生放大亏损。本页数据仅供学习参考，不构成任何投资建议。新手请务必充分了解规则后再操作。
+      </div>
+    </div>
+
+    <!-- 数据过期通知 -->
+    <div class="futures-stale-notice" id="futuresStaleNotice" style="display:none;">
+      <span class="stale-notice-icon">◔</span> 数据加载中…
+    </div>
+
+    <!-- 统计概览 -->
+    <section class="stats-bar stats-bar-futures">
+      <div class="stat-card stat-premium">
+        <div class="stat-label">最优年化贴水</div>
+        <div class="stat-value" id="futuresStatBest">--%</div>
+        <div class="stat-sub" id="futuresStatBestSub">--</div>
+      </div>
+      <div class="stat-card stat-open">
+        <div class="stat-label">活跃合约</div>
+        <div class="stat-value" id="futuresStatContracts">--</div>
+        <div class="stat-sub">个</div>
+      </div>
+      <div class="stat-card stat-discount">
+        <div class="stat-label">贴水合约数</div>
+        <div class="stat-value" id="futuresStatDiscount">--</div>
+        <div class="stat-sub">期货价 &lt; 现货</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">升水合约数</div>
+        <div class="stat-value" id="futuresStatPremium">--</div>
+        <div class="stat-sub">期货价 &gt; 现货</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">数据更新</div>
+        <div class="stat-value stat-time" id="futuresStatTime">--:--</div>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <section class="toolbar">
+      <div class="filter-group" id="futuresFilter">
+        <button class="filter-btn active" data-filter="all" data-page="futures">全部</button>
+        <button class="filter-btn" data-filter="IC" data-page="futures">IC 中证500</button>
+        <button class="filter-btn" data-filter="IF" data-page="futures">IF 沪深300</button>
+        <button class="filter-btn" data-filter="IH" data-page="futures">IH 上证50</button>
+        <button class="filter-btn" data-filter="IM" data-page="futures">IM 中证1000</button>
+      </div>
+      <div class="sort-group">
+        <label class="sort-label">排序</label>
+        <select id="sortFutures" class="sort-select">
+          <option value="annualizedReturn_desc">年化贴水 高→低</option>
+          <option value="annualizedReturn_asc">年化贴水 低→高</option>
+          <option value="discountRate_asc">贴水率 高→低</option>
+          <option value="discountRate_desc">贴水率 低→高</option>
+          <option value="discountPoints_asc">贴水点数 高→低</option>
+          <option value="discountPoints_desc">贴水点数 低→高</option>
+          <option value="daysToExpiry_asc">到期日 近→远</option>
+          <option value="daysToExpiry_desc">到期日 远→近</option>
+          <option value="lastPrice_desc">期货价 高→低</option>
+          <option value="lastPrice_asc">期货价 低→高</option>
+          <option value="indexPrice_desc">现货指数 高→低</option>
+          <option value="indexPrice_asc">现货指数 低→高</option>
+          <option value="marginPerLot_desc">保证金 高→低</option>
+          <option value="marginPerLot_asc">保证金 低→高</option>
+          <option value="profitPerLot_desc">贴水收益 高→低</option>
+          <option value="profitPerLot_asc">贴水收益 低→高</option>
+          <option value="expiryDate_asc">到期日期 近→远</option>
+          <option value="expiryDate_desc">到期日期 远→近</option>
+        </select>
+      </div>
+      <div class="toggle-group">
+        <label class="futures-toggle" id="toggleExtLinks" title="开启后显示东方财富/新浪行情跳转链接">
+          <input type="checkbox" id="extLinksSwitch">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">查看外部链接</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- 加载状态 -->
+    <div class="loading-container" id="futuresLoading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">正在获取股指期货行情数据<span class="loading-dots"></span></div>
+    </div>
+
+    <!-- 缓存提示 -->
+    <div class="cache-hint" id="futuresCacheHint" style="display:none;"></div>
+
+    <!-- 贴水概念说明（折叠） -->
+    <details class="futures-guide" id="futuresGuide">
+      <summary class="futures-guide-toggle">
+        <span class="guide-icon">💡</span>
+        <span>什么是贴水？滚IC策略是什么？</span>
+        <span class="guide-arrow">▶</span>
+      </summary>
+      <div class="futures-guide-content">
+        <div class="guide-section">
+          <h4>📖 基本概念</h4>
+          <p><strong>贴水</strong>：期货价格 &lt; 现货指数价格。买入贴水的期货合约，到期时期货价格会向现货靠拢，差价就是你的额外收益（Alpha）。</p>
+          <p><strong>升水</strong>：期货价格 &gt; 现货指数价格。此时滚动持有期货会产生负收益（基差损耗），通常不建议操作。</p>
+          <p><strong>基差</strong> = 期货价 − 现货价。贴水时基差为负数。</p>
+        </div>
+        <div class="guide-section">
+          <h4>🔄 滚IC策略</h4>
+          <p>买入贴水的股指期货合约持有 → 到期前换仓到新的远月合约 → 循环往复。赚取的收益 = <span class="guide-highlight">指数涨跌（Beta）</span> + <span class="guide-highlight">贴水收敛收益（Alpha）</span></p>
+          <p>优先选<strong>季度合约</strong>（远月），因为基差更深、性价比更高。</p>
+        </div>
+        <div class="guide-section">
+          <h4>⚠️ 核心风险</h4>
+          <ul>
+            <li>期货自带<strong>杠杆</strong>（保证金约12%），方向做反亏损是成倍的</li>
+            <li>指数大跌时，贴水收益远不够覆盖指数跌幅</li>
+            <li>需要定期<strong>换仓</strong>（到期前卖旧买新），换仓时机和成本需要关注</li>
+            <li>市场恐慌时贴水会急剧扩大，不要盲目追高年化贴水率</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+    <!-- 数据表格区域 -->
+    <section class="table-container" id="futuresTableContainer" style="display:none;">
+      <table class="data-table" id="futuresTable">
+        <thead>
+          <tr id="futuresTableHead">
+            <th class="th-index">#</th>
+            <th class="th-futures-code">合约</th>
+            <th class="th-futures-name">品种</th>
+            <th class="th-futures-price th-sortable" data-sort-key="lastPrice">期货最新价</th>
+            <th class="th-futures-index th-sortable" data-sort-key="indexPrice">现货指数</th>
+            <th class="th-futures-discount th-sortable" data-sort-key="discountPoints">贴水点数</th>
+            <th class="th-futures-rate th-sortable" data-sort-key="discountRate">贴水率</th>
+            <th class="th-futures-annualized th-sortable" data-sort-key="annualizedReturn">年化贴水</th>
+            <th class="th-futures-expiry th-sortable" data-sort-key="expiryDate">到期日</th>
+            <th class="th-futures-days th-sortable" data-sort-key="daysToExpiry">剩余天数</th>
+            <th class="th-futures-margin th-sortable" data-sort-key="marginPerLot">1手保证金</th>
+            <th class="th-futures-profit th-sortable" data-sort-key="profitPerLot">1手贴水收益</th>
+            <th class="th-futures-risk">风险</th>
+          </tr>
+        </thead>
+        <tbody id="futuresTableBody">
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 风险详情弹窗 -->
+    <div class="futures-risk-modal-overlay" id="futuresRiskModalOverlay" style="display:none;">
+      <div class="futures-risk-modal">
+        <div class="futures-risk-modal-header">
+          <h3 id="futuresRiskModalTitle">风险评估详情</h3>
+          <button class="compare-modal-close" id="futuresRiskModalClose">✕</button>
+        </div>
+        <div class="futures-risk-modal-body" id="futuresRiskModalBody">
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 收益率对比弹窗 -->
+  <div class="compare-modal-overlay" id="compareModalOverlay" style="display:none;">
+    <div class="compare-modal" id="compareModal">
+      <div class="compare-modal-header">
+        <h3>收益率趋势对比</h3>
+        <div class="compare-period-btns" id="comparePeriodBtns">
+          <button class="col-toggle-btn" data-period="month1">近1月</button>
+          <button class="col-toggle-btn active" data-period="month3">近3月</button>
+          <button class="col-toggle-btn" data-period="ytd">今年来</button>
+          <button class="col-toggle-btn" data-period="month6">近半年</button>
+          <button class="col-toggle-btn" data-period="year1">近1年</button>
+          <button class="col-toggle-btn" data-period="year3">近3年</button>
+        </div>
+        <button class="compare-modal-close" id="compareModalClose">✕</button>
+      </div>
+      <div class="compare-modal-body">
+        <div class="compare-loading" id="compareLoading" style="display:none;">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">正在获取历史净值数据<span class="loading-dots"></span></div>
+        </div>
+        <div class="compare-chart-container" id="compareChartWrap">
+          <canvas id="compareChart"></canvas>
+        </div>
+        <!-- 对比摘要表格 -->
+        <div class="compare-table-container">
+          <table class="data-table" id="compareTable">
+            <thead>
+              <tr id="compareTableHead">
+                <th>颜色</th>
+                <th>基金代码</th>
+                <th>基金名称</th>
+                <th>最新净值</th>
+                <th>日涨幅</th>
+                <th>区间收益率</th>
+              </tr>
+            </thead>
+            <tbody id="compareTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>数据来源: 东方财富 · 天天基金 · 腾讯财经 | 数据仅供参考，不构成投资建议</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

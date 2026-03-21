@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime cache data (keep enhance.json as config)
+data/lof.json
+data/qdii.json
+data/yield.json
+data/futures.json
+
+# WorkBuddy internal
+.workbuddy/
