@@ -19,11 +19,12 @@ const S = {
 
 // 收益率列配置
 const YIELD_COLS = [
-  { key: 'ytd',    label: '今年来' },
+  { key: 'week1',  label: '近1周' },
   { key: 'month1', label: '近1月' },
   { key: 'month3', label: '近3月' },
   { key: 'month6', label: '近半年' },
   { key: 'year1',  label: '近1年' },
+  { key: 'ytd',    label: '今年来' },
 ];
 
 // ==================== Helpers ====================
@@ -305,7 +306,7 @@ function applyLofFilters() {
     const strFields = new Set(['code', 'name']);
 
     // 收益率字段需从 S.yield 中取值
-    const yieldFields = new Set(['ytd', 'month1', 'month3', 'month6', 'year1']);
+    const yieldFields = new Set(['week1', 'ytd', 'month1', 'month3', 'month6', 'year1']);
 
     d.sort((a, b) => {
       let va, vb;
@@ -465,7 +466,7 @@ function applyQdiiFilters() {
   const [field, dir] = sortKey.split(/_(?=[^_]+$)/);
   const isAsc = dir === 'asc';
   const strFields = new Set(['code', 'name', 'navDate']);
-  const yieldFields = new Set(['ytd', 'month1', 'month3', 'month6', 'year1']);
+  const yieldFields = new Set(['week1', 'ytd', 'month1', 'month3', 'month6', 'year1']);
 
   d.sort((a, b) => {
     let va, vb;
