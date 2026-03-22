@@ -36,7 +36,7 @@ function writeCacheFile(filePath, data) {
     const content = {
       fetchDate: new Date().toISOString(),
       fetchDateLocal: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
-      count: data.length,
+      count: Array.isArray(data) ? data.length : Object.keys(data).length,
       data,
     };
     fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf-8');
@@ -548,6 +548,116 @@ async function fetchAllYieldData() {
   return yieldMap;
 }
 
+// ==================== 补充缺失收益率（通过历史净值计算） ====================
+// 从历史净值数据中手动计算各期间收益率
+function calcYieldFromHistory(history) {
+  if (!history || history.length < 2) return null;
+
+  // history 已按日期升序排列
+  const latest = history[history.length - 1];
+  const latestNav = latest.nav;
+  const latestDate = latest.date;
+  if (!latestNav) return null;
+
+  // 构建日期→净值映射
+  const dateNavMap = {};
+  history.forEach(h => { dateNavMap[h.date] = h.nav; });
+
+  // 计算指定天数前的收益率（找最接近的交易日）
+  function calcReturn(daysAgo) {
+    const target = new Date(latestDate + 'T00:00:00+08:00');
+    target.setDate(target.getDate() - daysAgo);
+    // 向前搜索最多5天（跳过非交易日）
+    for (let offset = 0; offset <= 5; offset++) {
+      const d = new Date(target);
+      d.setDate(d.getDate() - offset);
+      const ds = d.toISOString().slice(0, 10);
+      if (dateNavMap[ds] && dateNavMap[ds] > 0) {
+        return ((latestNav - dateNavMap[ds]) / dateNavMap[ds]) * 100;
+      }
+    }
+    return null;
+  }
+
+  // 今年来
+  function calcYtd() {
+    const yearStart = latestDate.slice(0, 4) + '-01-01';
+    // 找年初第一个交易日
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].date >= yearStart) {
+        const baseNav = history[i].nav;
+        if (baseNav > 0) return ((latestNav - baseNav) / baseNav) * 100;
+        break;
+      }
+    }
+    return null;
+  }
+
+  const round2 = v => v != null ? Math.round(v * 100) / 100 : null;
+  return {
+    yieldDate: latestDate,
+    nav: latestNav,
+    dailyChange: latest.change ?? null,
+    week1: round2(calcReturn(7)),
+    month1: round2(calcReturn(30)),
+    month3: round2(calcReturn(90)),
+    month6: round2(calcReturn(180)),
+    year1: round2(calcReturn(365)),
+    ytd: round2(calcYtd()),
+  };
+}
+
+// 为 yieldMap 中缺失的 LOF/QDII 基金补充收益率数据
+async function supplementMissingYield(yieldMap) {
+  // 读取 LOF + QDII 缓存，找出缺失收益率的基金
+  const missingCodes = [];
+
+  const lofCache = readCacheFile(LOF_CACHE_FILE);
+  if (lofCache && lofCache.data) {
+    lofCache.data.forEach(f => {
+      if (!yieldMap[f.code]) missingCodes.push(f.code);
+    });
+  }
+
+  const qdiiCache = readCacheFile(QDII_CACHE_FILE);
+  if (qdiiCache && qdiiCache.data) {
+    qdiiCache.data.forEach(f => {
+      if (!yieldMap[f.code]) missingCodes.push(f.code);
+    });
+  }
+
+  if (missingCodes.length === 0) {
+    console.log('[收益率补充] 无缺失基金');
+    return;
+  }
+
+  console.log(`[收益率补充] 发现 ${missingCodes.length} 只缺失收益率的基金，开始通过历史净值补充...`);
+  let supplemented = 0;
+  const batchSize = 10;
+
+  for (let i = 0; i < missingCodes.length; i += batchSize) {
+    const batch = missingCodes.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async code => {
+        const history = await fetchFundHistory(code, 380); // 拿约1年+的数据
+        return { code, history };
+      })
+    );
+
+    for (const { code, history } of results) {
+      const yld = calcYieldFromHistory(history);
+      if (yld) {
+        yieldMap[code] = yld;
+        supplemented++;
+      }
+    }
+
+    if (i + batchSize < missingCodes.length) await sleep(200);
+  }
+
+  console.log(`[收益率补充] 完成! 补充了 ${supplemented}/${missingCodes.length} 只基金`);
+}
+
 // API: 收益率数据
 app.get('/api/yield', async (req, res) => {
   const forceRefresh = req.query.refresh === '1';
@@ -569,6 +679,8 @@ app.get('/api/yield', async (req, res) => {
   try {
     const yieldMap = await fetchAllYieldData();
     if (Object.keys(yieldMap).length === 0) throw new Error('收益率数据为空');
+    // 补充排行接口缺失的 LOF/QDII 基金收益率
+    await supplementMissingYield(yieldMap);
     writeCacheFile(YIELD_CACHE_FILE, yieldMap);
     const cached = readCacheFile(YIELD_CACHE_FILE);
     res.json({
