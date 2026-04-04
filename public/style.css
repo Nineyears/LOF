@@ -2187,6 +2187,295 @@ body {
   opacity: 1;
 }
 
+/* ===== 央行公开市场操作 ===== */
+
+.stats-bar-openmarket {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* 操作明细标签 */
+.om-op-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--blue-bg);
+  color: var(--blue);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  margin-right: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+/* 表格列宽 */
+.th-om-date { width: 160px; }
+.th-om-ops { min-width: 220px; }
+.th-om-total,
+.th-om-maturity { width: 110px; text-align: right; }
+.th-om-net { width: 120px; text-align: right; }
+.th-om-rate { width: 90px; text-align: right; }
+.th-om-status { width: 90px; text-align: center; }
+
+.cell-om-date {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.om-source-link {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 12px;
+  text-decoration: none;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.om-source-link:hover {
+  opacity: 1;
+}
+
+.cell-om-ops {
+  line-height: 1.8;
+}
+
+.cell-om-total,
+.cell-om-maturity {
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.cell-om-net {
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.cell-om-rate {
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-accent);
+}
+
+.cell-om-status {
+  text-align: center;
+}
+
+/* 净投放（红色 — 中国惯例：放水=利好=红） */
+.om-net-inject {
+  color: var(--red);
+}
+
+/* 净回笼（绿色 — 收紧=利空=绿） */
+.om-net-withdraw {
+  color: var(--green);
+}
+
+.om-net-zero {
+  color: var(--text-muted);
+}
+
+/* 状态标签 */
+.om-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.om-status-inject {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+}
+
+.om-status-withdraw {
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid rgba(22, 163, 74, 0.18);
+}
+
+.om-status-zero {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+/* 流动性趋势图表 */
+.om-chart-section {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: background 0.35s, border-color 0.35s;
+}
+
+.om-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 0;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.om-chart-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.om-chart-icon {
+  color: var(--blue);
+  font-size: 16px;
+}
+
+.om-chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.om-chart-type-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.om-type-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.om-type-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.om-type-btn.active {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(59,130,246,0.3);
+}
+
+.om-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.om-legend-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 20px;
+  background: var(--bg-input);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.om-legend-btn:hover {
+  border-color: var(--text-muted);
+}
+
+.om-legend-btn .om-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+}
+
+.om-legend-btn[data-series="invest"] .om-legend-dot {
+  background: rgba(239, 68, 68, 0.8);
+}
+
+.om-legend-btn[data-series="maturity"] .om-legend-dot {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+.om-legend-btn[data-series="net"] .om-legend-dot {
+  background: linear-gradient(135deg, #22c55e, #f59e0b);
+  border-radius: 50%;
+}
+
+/* 未激活态：淡化 */
+.om-legend-btn:not(.active) {
+  opacity: 0.45;
+}
+
+.om-legend-btn:not(.active) .om-legend-dot {
+  opacity: 0.3;
+}
+
+.om-chart-container {
+  height: 260px;
+  padding: 8px 16px 12px;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .stats-bar-openmarket {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .om-chart-container {
+    height: 200px;
+  }
+  .om-chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .om-chart-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .om-legend-btn {
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+}
+
 /* ===== Theme transition ===== */
 /* 
  * 主题切换时，临时给 html 加上 .theme-transitioning 类，

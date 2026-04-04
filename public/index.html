@@ -40,6 +40,10 @@
           <span class="nav-icon">⟟</span>
           期货贴水
         </a>
+        <a href="#" class="nav-link" data-page="openmarket">
+          <span class="nav-icon">⊙</span>
+          央行操作
+        </a>
       </nav>
       <div class="header-right">
         <div class="market-status" id="marketStatus">
@@ -602,8 +606,114 @@
     </div>
   </div>
 
+  <!-- 央行公开市场操作页面 -->
+  <main class="page page-openmarket" id="pageOpenmarket">
+    <!-- 统计概览 -->
+    <section class="stats-bar stats-bar-openmarket">
+      <div class="stat-card stat-open">
+        <div class="stat-label">最近操作日</div>
+        <div class="stat-value stat-time" id="omStatDate">--</div>
+      </div>
+      <div class="stat-card stat-premium">
+        <div class="stat-label">最近净投放/回笼</div>
+        <div class="stat-value" id="omStatNet">--</div>
+        <div class="stat-sub" id="omStatNetSub">亿元</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">最新逆回购利率</div>
+        <div class="stat-value" id="omStatRate">--%</div>
+      </div>
+      <div class="stat-card stat-discount">
+        <div class="stat-label">净回笼天数</div>
+        <div class="stat-value" id="omStatWithdraw">--</div>
+        <div class="stat-sub">近10日</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">数据更新</div>
+        <div class="stat-value stat-time" id="omStatTime">--:--</div>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <section class="toolbar">
+      <div class="filter-group" id="omFilterGroup">
+        <button class="filter-btn active" data-filter="all" data-page="openmarket">全部</button>
+        <button class="filter-btn" data-filter="injection" data-page="openmarket">净投放</button>
+        <button class="filter-btn" data-filter="withdraw" data-page="openmarket">净回笼</button>
+      </div>
+      <div class="sort-group">
+        <label class="sort-label">排序</label>
+        <select id="sortOpenmarket" class="sort-select">
+          <option value="date_desc">日期 近→远</option>
+          <option value="date_asc">日期 远→近</option>
+          <option value="netAmount_desc">净投放 高→低</option>
+          <option value="netAmount_asc">净投放 低→高</option>
+          <option value="totalOperation_desc">操作量 高→低</option>
+          <option value="totalOperation_asc">操作量 低→高</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- 加载状态 -->
+    <div class="loading-container" id="openmarketLoading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">正在获取央行公开市场操作数据<span class="loading-dots"></span></div>
+    </div>
+
+    <!-- 缓存提示 -->
+    <div class="cache-hint" id="openmarketCacheHint" style="display:none;"></div>
+
+    <!-- 流动性趋势图表 -->
+    <section class="om-chart-section" id="omChartSection" style="display:none;">
+      <div class="om-chart-header">
+        <h3 class="om-chart-title">
+          <span class="om-chart-icon">◈</span>
+          市场流动性趋势
+        </h3>
+        <div class="om-chart-controls">
+          <div class="om-chart-type-switch">
+            <button class="om-type-btn active" data-chart-type="bar" title="柱状图">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+            </button>
+            <button class="om-type-btn" data-chart-type="line" title="折线图">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </button>
+          </div>
+          <div class="om-chart-legend">
+            <button class="om-legend-btn active" data-series="invest"><span class="om-legend-dot"></span>投放量</button>
+            <button class="om-legend-btn active" data-series="maturity"><span class="om-legend-dot"></span>到期量</button>
+            <button class="om-legend-btn active" data-series="net"><span class="om-legend-dot"></span>净投放/回笼</button>
+          </div>
+        </div>
+      </div>
+      <div class="om-chart-container">
+        <canvas id="omLiquidityChart"></canvas>
+      </div>
+    </section>
+
+    <!-- 数据表格 -->
+    <section class="table-container" id="openmarketTableContainer" style="display:none;">
+      <table class="data-table" id="openmarketTable">
+        <thead>
+          <tr id="openmarketTableHead">
+            <th class="th-index">#</th>
+            <th class="th-om-date th-sortable" data-sort-key="date">日期</th>
+            <th class="th-om-ops">操作明细</th>
+            <th class="th-om-total th-sortable" data-sort-key="totalOperation">操作量(亿)</th>
+            <th class="th-om-maturity th-sortable" data-sort-key="maturityTotal">到期量(亿)</th>
+            <th class="th-om-net th-sortable" data-sort-key="netAmount">净投放(亿)</th>
+            <th class="th-om-rate th-sortable" data-sort-key="rate">利率</th>
+            <th class="th-om-status">状态</th>
+          </tr>
+        </thead>
+        <tbody id="openmarketTableBody">
+        </tbody>
+      </table>
+    </section>
+  </main>
+
   <footer class="footer">
-    <p>数据来源: 东方财富 · 天天基金 · 腾讯财经 | 数据仅供参考，不构成投资建议</p>
+    <p>数据来源: 东方财富 · 天天基金 · 腾讯财经 · 新浪财经 | 数据仅供参考，不构成投资建议</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>

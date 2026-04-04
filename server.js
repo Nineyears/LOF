@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const fetch = require('node-fetch');
 const iconv = require('iconv-lite');
 const path = require('path');
@@ -7,6 +8,8 @@ const fs = require('fs');
 const app = express();
 const PORT = 3456;
 
+// gzip 压缩 — yield.json 6.9MB 压缩后约 600KB
+app.use(compression());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==================== 本地文件缓存 ====================
@@ -15,6 +18,7 @@ const LOF_CACHE_FILE = path.join(CACHE_DIR, 'lof.json');
 const QDII_CACHE_FILE = path.join(CACHE_DIR, 'qdii.json');
 const YIELD_CACHE_FILE = path.join(CACHE_DIR, 'yield.json');
 const ENHANCE_LIST_FILE = path.join(CACHE_DIR, 'enhance.json');
+const OPENMARKET_CACHE_FILE = path.join(CACHE_DIR, 'openmarket.json');
 
 // 确保 data 目录存在
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -40,7 +44,8 @@ function writeCacheFile(filePath, data) {
       data,
     };
     fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf-8');
-    console.log(`[缓存] 已写入 ${path.basename(filePath)}, ${data.length} 条`);
+    const cnt = Array.isArray(data) ? data.length : Object.keys(data).length;
+    console.log(`[缓存] 已写入 ${path.basename(filePath)}, ${cnt} 条`);
   } catch (err) {
     console.error(`写入缓存文件失败 ${filePath}:`, err.message);
   }
@@ -50,6 +55,7 @@ function writeCacheFile(filePath, data) {
 const dataCache = {
   lof: { data: null, time: 0, loading: false },
   qdii: { data: null, time: 0, loading: false },
+  openmarket: { data: null, time: 0, loading: false },
 };
 
 // ==================== 工具函数 ====================
@@ -632,8 +638,9 @@ async function supplementMissingYield(yieldMap) {
   }
 
   console.log(`[收益率补充] 发现 ${missingCodes.length} 只缺失收益率的基金，开始通过历史净值补充...`);
+  const startTime = Date.now();
   let supplemented = 0;
-  const batchSize = 10;
+  const batchSize = 30; // 增大并发批次（原来10→30）
 
   for (let i = 0; i < missingCodes.length; i += batchSize) {
     const batch = missingCodes.slice(i, i + batchSize);
@@ -652,50 +659,99 @@ async function supplementMissingYield(yieldMap) {
       }
     }
 
-    if (i + batchSize < missingCodes.length) await sleep(200);
+    if (i + batchSize < missingCodes.length) await sleep(100); // 缩短间隔
   }
 
-  console.log(`[收益率补充] 完成! 补充了 ${supplemented}/${missingCodes.length} 只基金`);
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[收益率补充] 完成! 补充了 ${supplemented}/${missingCodes.length} 只基金, 耗时 ${elapsed}s`);
+}
+
+// ==================== 收益率后台刷新机制 ====================
+let _yieldRefreshing = false;
+
+// 后台完整刷新：排行接口 + 补充缺失，全部在后台跑
+async function refreshYieldInBackground() {
+  if (_yieldRefreshing) {
+    console.log('[收益率后台] 已有刷新任务在执行，跳过');
+    return;
+  }
+  _yieldRefreshing = true;
+  const startTime = Date.now();
+  try {
+    console.log('[收益率后台] 开始刷新...');
+    const yieldMap = await fetchAllYieldData();
+    if (Object.keys(yieldMap).length === 0) throw new Error('收益率数据为空');
+
+    // 先写入排行接口数据
+    writeCacheFile(YIELD_CACHE_FILE, yieldMap);
+
+    // 继续补充缺失基金
+    await supplementMissingYield(yieldMap);
+    writeCacheFile(YIELD_CACHE_FILE, yieldMap);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[收益率后台] 全部完成! 耗时 ${elapsed}s`);
+  } catch (err) {
+    console.error('[收益率后台] 刷新失败:', err.message);
+  } finally {
+    _yieldRefreshing = false;
+  }
 }
 
 // API: 收益率数据
+// - 无 refresh：直接返回文件缓存（毫秒级）
+// - refresh=1：立即返回旧缓存 + refreshing=true，后台异步刷新
+// - 首次无缓存：同步等待排行接口，补充逻辑仍后台执行
 app.get('/api/yield', async (req, res) => {
   const forceRefresh = req.query.refresh === '1';
+  const cached = readCacheFile(YIELD_CACHE_FILE);
 
-  // 非刷新：优先返回本地文件缓存
-  if (!forceRefresh) {
-    const cached = readCacheFile(YIELD_CACHE_FILE);
-    if (cached) {
-      return res.json({
-        success: true,
-        data: cached.data,
-        cached: true,
-        fetchDate: cached.fetchDate,
-        fetchDateLocal: cached.fetchDateLocal,
-      });
-    }
+  // 场景1: 非刷新 → 直接返回缓存
+  if (!forceRefresh && cached) {
+    return res.json({
+      success: true,
+      data: cached.data,
+      cached: true,
+      fetchDate: cached.fetchDate,
+      fetchDateLocal: cached.fetchDateLocal,
+    });
   }
 
+  // 场景2: 刷新但有旧缓存 → 立即返回旧数据，后台刷新
+  if (forceRefresh && cached) {
+    res.json({
+      success: true,
+      data: cached.data,
+      cached: true,
+      refreshing: true,
+      fetchDate: cached.fetchDate,
+      fetchDateLocal: cached.fetchDateLocal,
+    });
+    // 触发后台刷新（不等待）
+    refreshYieldInBackground();
+    return;
+  }
+
+  // 场景3: 无缓存（首次启动）→ 必须同步等待排行接口
   try {
     const yieldMap = await fetchAllYieldData();
     if (Object.keys(yieldMap).length === 0) throw new Error('收益率数据为空');
-    // 补充排行接口缺失的 LOF/QDII 基金收益率
-    await supplementMissingYield(yieldMap);
     writeCacheFile(YIELD_CACHE_FILE, yieldMap);
-    const cached = readCacheFile(YIELD_CACHE_FILE);
     res.json({
       success: true,
       data: yieldMap,
       cached: false,
-      fetchDate: cached?.fetchDate || new Date().toISOString(),
-      fetchDateLocal: cached?.fetchDateLocal || new Date().toLocaleString('zh-CN'),
+      fetchDate: new Date().toISOString(),
+      fetchDateLocal: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
     });
+    // 后台补充缺失基金
+    _yieldRefreshing = true;
+    supplementMissingYield(yieldMap)
+      .then(() => writeCacheFile(YIELD_CACHE_FILE, yieldMap))
+      .catch(err => console.error('[收益率补充] 失败:', err.message))
+      .finally(() => { _yieldRefreshing = false; });
   } catch (err) {
     console.error('[收益率API] 失败:', err.message);
-    const cached = readCacheFile(YIELD_CACHE_FILE);
-    if (cached) {
-      return res.json({ success: true, data: cached.data, cached: true, fetchDate: cached.fetchDate, fetchDateLocal: cached.fetchDateLocal, error: err.message });
-    }
     res.json({ success: false, error: err.message });
   }
 });
@@ -1299,6 +1355,343 @@ app.get('/api/proxy', async (req, res) => {
     }
   } catch (err) {
     res.json({ success: false, error: err.message });
+  }
+});
+
+// ==================== 央行公开市场操作 ====================
+
+/**
+ * 从东方财富新闻搜索 API 获取央行公开市场操作数据
+ * 新闻标题格式高度标准化，例如：
+ *   "央行今日开展1593亿元7天逆回购操作，操作利率为1.50%"
+ *   "央行今日开展2850亿元1年期MLF操作，操作利率为2.50%"
+ *   "央行今日开展4500亿元买断式逆回购操作"
+ * 同时解析到期量：
+ *   "央行今日进行1593亿元7天逆回购操作，因今日有12亿元逆回购到期"
+ */
+async function buildOpenMarketData() {
+  console.log('[央行操作] 开始获取数据...');
+  const startTime = Date.now();
+
+  // 用多关键词搜索确保覆盖面
+  const keywords = [
+    '央行 逆回购 到期',
+    '央行 买断式逆回购',
+    '央行 MLF 操作',
+  ];
+  const allNews = [];
+  const seenTitles = new Set();
+
+  for (const keyword of keywords) {
+    try {
+      const paramObj = {
+        uid: '',
+        keyword,
+        type: ['cmsArticleWebOld'],
+        client: 'web',
+        clientType: 'web',
+        clientVersion: 'curr',
+        param: {
+          cmsArticleWebOld: {
+            searchScope: 'default',
+            sort: 'default',
+            pageIndex: 1,
+            pageSize: 50,
+          },
+        },
+      };
+      const paramStr = JSON.stringify(paramObj);
+      const url = `https://search-api-web.eastmoney.com/search/jsonp?cb=jQuery&param=${encodeURIComponent(paramStr)}`;
+
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Referer': 'https://so.eastmoney.com/',
+        },
+        timeout: 15000,
+      });
+      const text = await resp.text();
+
+      // 解析 JSONP → JSON
+      const jsonStr = text.replace(/^jQuery\(/, '').replace(/\);?\s*$/, '');
+      const json = JSON.parse(jsonStr);
+
+      const articles =
+        json?.result?.cmsArticleWebOld ||
+        json?.result?.cmsArticleWebOldList ||
+        [];
+
+      for (const art of articles) {
+        const title = (art.title || '').replace(/<[^>]+>/g, ''); // 去HTML标签
+        if (!title || seenTitles.has(title)) continue;
+        seenTitles.add(title);
+        allNews.push({
+          title,
+          date: art.date || art.showTime || '',
+          content: (art.content || art.mediaName || '').replace(/<[^>]+>/g, ''),
+          url: art.url || art.articleUrl || '',
+        });
+      }
+    } catch (err) {
+      console.error(`[央行操作] 搜索 "${keyword}" 失败:`, err.message);
+    }
+    await sleep(200);
+  }
+
+  console.log(`[央行操作] 获取到 ${allNews.length} 条新闻`);
+
+  // 按日期聚合操作记录
+  const dailyMap = {}; // date -> { operations: [], maturityTotal, source }
+
+  for (const news of allNews) {
+    // 提取新闻发布日期
+    let pubDateStr = '';
+    if (news.date) {
+      const dateMatch = news.date.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (dateMatch) {
+        pubDateStr = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`;
+      }
+    }
+    if (!pubDateStr) continue;
+
+    const fullText = news.title + ' ' + news.content;
+
+    // 尝试提取实际操作日期
+    // 买断式逆回购/MLF等可能提前公告，新闻 4/3 发但实际操作日是 4/7
+    // 匹配模式：
+    //   "4月7日将开展..." / "4月7日以...方式开展..."
+    //   "将于7日...开展..."  "将于4月7日...开展..."
+    //   "2026年4月7日...将...开展..."
+    let dateStr = pubDateStr;
+    const futureDatePatterns = [
+      // "将于X日...开展" / "将于X月X日...开展"（最精确）
+      /将于\s*(?:(\d{1,2})月)?(\d{1,2})日[^。]{0,50}?开展/,
+      // "X月X日将...开展"（日期紧邻"将"字）
+      /(\d{1,2})月(\d{1,2})日\s*[，,]?\s*(?:中国人民银行|央行|人民银行)?\s*将[^。]{0,40}?开展/,
+      // "X月X日开展XXX亿"（直接陈述未来操作日）
+      /(\d{1,2})月(\d{1,2})日\s*开展\s*[\d,.]+\s*(?:万亿元|亿元)/,
+    ];
+    for (const pat of futureDatePatterns) {
+      const fm = fullText.match(pat);
+      if (fm) {
+        const year = pubDateStr.substring(0, 4);
+        let month, day;
+        if (pat === futureDatePatterns[0]) {
+          // "将于X月X日" 或 "将于X日"
+          month = fm[1] || pubDateStr.substring(5, 7); // 无月份则沿用发布日的月
+          day = fm[2];
+        } else {
+          month = fm[1]; day = fm[2];
+        }
+        const candidateDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        // 只接受合理的未来日期（操作日应≥发布日）
+        if (candidateDate >= pubDateStr) {
+          dateStr = candidateDate;
+        }
+        break;
+      }
+    }
+
+    // 如果标题含预告性词语（"将开展"/"将以"/"即将"），但未提取到未来日期
+    // 说明是分析/评论文章，同一操作已有其他新闻正确归位，跳过避免重复
+    if (dateStr === pubDateStr) {
+      const isPreview = /将\s*(?:开展|以)|即将.*(?:开展|出手)/.test(news.title.replace(/<[^>]+>/g, ''));
+      // 额外检查：是否是买断式逆回购/MLF的预告（这类操作通常提前公告）
+      const isBigOp = /买断式逆回购|MLF|中期借贷便利/.test(news.title.replace(/<[^>]+>/g, ''));
+      if (isPreview && isBigOp) continue; // 跳过这条预告新闻
+    }
+
+    // ---- 金额解析工具：支持 亿元 / 万亿元 ----
+    function parseAmount(numStr, unit) {
+      let amount = parseFloat(numStr.replace(/,/g, ''));
+      if (unit && unit.includes('万亿')) amount *= 10000; // 1.1万亿 = 11000亿
+      return amount;
+    }
+
+    // 提取操作信息（支持多个操作在同一条新闻中）
+    const operations = [];
+
+    // 模式A: "开展XXX亿元N天/N年期 逆回购/MLF 操作"（带期限前缀）
+    const opRegexA = /开展\s*([\d,.]+)\s*亿元\s*(\d+[天月年](?:期)?)\s*(逆回购|买断式逆回购|MLF|中期借贷便利|国库现金定存)\s*操作/g;
+    let opMatch;
+    while ((opMatch = opRegexA.exec(fullText)) !== null) {
+      const amount = parseFloat(opMatch[1].replace(/,/g, ''));
+      let term = opMatch[2].replace(/期$/, '');
+      let type = opMatch[3];
+      if (type === '中期借贷便利') type = 'MLF';
+      operations.push({ amount, term, type });
+    }
+
+    // 模式B: "开展XXX亿元买断式逆回购操作"（无期限前缀，期限在正文其他位置）
+    const opRegexB = /开展\s*([\d,.]+)\s*(万亿元|亿元)\s*(买断式逆回购|MLF|中期借贷便利)\s*操作/g;
+    while ((opMatch = opRegexB.exec(fullText)) !== null) {
+      const amount = parseAmount(opMatch[1], opMatch[2]);
+      let type = opMatch[3];
+      if (type === '中期借贷便利') type = 'MLF';
+
+      // 避免与模式A重复（模式A已包含带期限的买断式逆回购）
+      const dup = operations.find(o => o.type === type && o.amount === amount);
+      if (dup) continue;
+
+      // 从正文中提取期限："期限为3个月" / "期限3个月（89天）"
+      let term = '';
+      const termMatch = fullText.match(/期限[为是]?\s*(\d+)\s*个?(月|天|年)/);
+      if (termMatch) {
+        term = termMatch[1] + (termMatch[2] === '月' ? '个月' : termMatch[2]);
+      }
+
+      operations.push({ amount, term: term || '', type });
+    }
+
+    // 提取操作利率
+    const rateMatch = fullText.match(/(?:操作|中标)利率[为是]\s*([\d.]+)\s*%/);
+    const rate = rateMatch ? parseFloat(rateMatch[1]) : null;
+
+    // ---- 提取到期量 ----
+    let maturityTotal = 0;
+
+    // 模式1: "有XXX亿元/万亿元 逆回购/买断式逆回购/MLF 到期"
+    const maturityRegex = /([\d,.]+)\s*(万亿元|亿元|亿)\s*(?:\d+[天月年](?:期)?\s*)?(逆回购|买断式逆回购|MLF|中期借贷便利|国库现金定存)\s*到期/g;
+    let matMatch;
+    while ((matMatch = maturityRegex.exec(fullText)) !== null) {
+      maturityTotal += parseAmount(matMatch[1], matMatch[2]);
+    }
+
+    // 模式2: "到期量为XXX亿元" / "到期量XXX亿"
+    if (maturityTotal === 0) {
+      const matAltMatch = fullText.match(/到期[量额][为是]?\s*([\d,.]+)\s*(万亿元|亿元|亿)/);
+      if (matAltMatch) {
+        maturityTotal = parseAmount(matAltMatch[1], matAltMatch[2]);
+      }
+    }
+
+    // 模式3: "当月有X.X万亿元到期量" / "有XXX亿元到期"
+    if (maturityTotal === 0) {
+      const matAlt2 = fullText.match(/有\s*([\d,.]+)\s*(万亿元|亿元|亿)\s*到期/);
+      if (matAlt2) {
+        maturityTotal = parseAmount(matAlt2[1], matAlt2[2]);
+      }
+    }
+
+    if (operations.length === 0) continue;
+
+    // 聚合到日级别
+    if (!dailyMap[dateStr]) {
+      dailyMap[dateStr] = {
+        date: dateStr,
+        operations: [],
+        maturityTotal: 0,
+        rate: null,
+        source: news.url || '',
+      };
+    }
+    const daily = dailyMap[dateStr];
+    for (const op of operations) {
+      // 去重：同类型+同金额视为同一操作（不同新闻可能描述同一操作）
+      const dupIdx = daily.operations.findIndex(
+        o => o.type === op.type && o.amount === op.amount
+      );
+      if (dupIdx >= 0) {
+        // 已存在，但如果新的有更详细的 term 信息则更新
+        if (op.term && !daily.operations[dupIdx].term) {
+          daily.operations[dupIdx].term = op.term;
+        }
+      } else {
+        daily.operations.push(op);
+      }
+    }
+    if (maturityTotal > daily.maturityTotal) daily.maturityTotal = maturityTotal;
+    if (rate !== null && daily.rate === null) daily.rate = rate;
+    if (!daily.source && news.url) daily.source = news.url;
+  }
+
+  // 生成最终数据数组
+  const result = Object.values(dailyMap)
+    .map(day => {
+      const totalOperation = day.operations.reduce((s, o) => s + o.amount, 0);
+      const netAmount = totalOperation - day.maturityTotal;
+      return {
+        date: day.date,
+        operations: day.operations,
+        totalOperation,
+        maturityTotal: day.maturityTotal,
+        netAmount,
+        netStatus: netAmount > 0 ? '净投放' : netAmount < 0 ? '净回笼' : '零投放',
+        rate: day.rate,
+        source: day.source,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date)); // 日期降序
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[央行操作] 完成! ${result.length} 条日记录, 耗时 ${elapsed}s`);
+  return result;
+}
+
+// API: 央行公开市场操作
+app.get('/api/openmarket', async (req, res) => {
+  const forceRefresh = req.query.refresh === '1';
+
+  // 非刷新：优先返回本地文件缓存
+  if (!forceRefresh) {
+    const cached = readCacheFile(OPENMARKET_CACHE_FILE);
+    if (cached) {
+      return res.json({
+        success: true,
+        data: cached.data,
+        cached: true,
+        fetchDate: cached.fetchDate,
+        fetchDateLocal: cached.fetchDateLocal,
+      });
+    }
+  }
+
+  // 正在加载中
+  if (dataCache.openmarket.loading) {
+    const cached = readCacheFile(OPENMARKET_CACHE_FILE);
+    if (cached) {
+      return res.json({
+        success: true,
+        data: cached.data,
+        cached: true,
+        fetchDate: cached.fetchDate,
+        fetchDateLocal: cached.fetchDateLocal,
+        refreshing: true,
+      });
+    }
+    const waitStart = Date.now();
+    while (dataCache.openmarket.loading && Date.now() - waitStart < 30000) {
+      await sleep(1000);
+    }
+    const freshCache = readCacheFile(OPENMARKET_CACHE_FILE);
+    if (freshCache) {
+      return res.json({ success: true, data: freshCache.data, cached: false, fetchDate: freshCache.fetchDate, fetchDateLocal: freshCache.fetchDateLocal });
+    }
+    return res.json({ success: false, error: '数据加载超时' });
+  }
+
+  try {
+    dataCache.openmarket.loading = true;
+    const data = await buildOpenMarketData();
+    writeCacheFile(OPENMARKET_CACHE_FILE, data);
+    dataCache.openmarket.time = Date.now();
+    const cached = readCacheFile(OPENMARKET_CACHE_FILE);
+    res.json({
+      success: true,
+      data,
+      cached: false,
+      fetchDate: cached?.fetchDate || new Date().toISOString(),
+      fetchDateLocal: cached?.fetchDateLocal || new Date().toLocaleString('zh-CN'),
+    });
+  } catch (err) {
+    console.error('[央行操作] 获取失败:', err.message);
+    const cached = readCacheFile(OPENMARKET_CACHE_FILE);
+    if (cached) {
+      return res.json({ success: true, data: cached.data, cached: true, fetchDate: cached.fetchDate, fetchDateLocal: cached.fetchDateLocal, error: err.message });
+    }
+    res.json({ success: false, error: err.message });
+  } finally {
+    dataCache.openmarket.loading = false;
   }
 });
 

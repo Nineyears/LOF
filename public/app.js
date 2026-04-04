@@ -9,6 +9,7 @@ const S = {
   qdii: { raw: [], filtered: [], filter: 'all', search: '', sort: 'purchaseLimit_desc', loading: false },
   enhance: { groups: [], flatList: [], filtered: [], filter: 'all', search: '', sort: 'ytd_desc', loading: false, view: 'group' },
   futures: { raw: [], filtered: [], filter: 'all', sort: 'annualizedReturn_desc', loading: false },
+  openmarket: { raw: [], filtered: [], filter: 'all', sort: 'date_desc', loading: false },
   compare: { active: false, selected: [], period: 'month3', chart: null },
   lastUpdate: null,
   yield: {},          // code -> { ytd, month1, month3, month6, year1, ... }
@@ -243,13 +244,14 @@ function initNav() {
       document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
       link.classList.add('active');
       document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
-      const pageMap = { lof: 'pageLof', qdii: 'pageQdii', enhance: 'pageEnhance', futures: 'pageFutures' };
+      const pageMap = { lof: 'pageLof', qdii: 'pageQdii', enhance: 'pageEnhance', futures: 'pageFutures', openmarket: 'pageOpenmarket' };
       document.getElementById(pageMap[p]).classList.add('active');
       S.page = p;
       if (p === 'lof' && S.lof.raw.length === 0) loadLof();
       if (p === 'qdii' && S.qdii.raw.length === 0) loadQdii();
       if (p === 'enhance' && S.enhance.groups.length === 0) loadEnhance();
       if (p === 'futures' && S.futures.raw.length === 0) loadFutures();
+      if (p === 'openmarket' && S.openmarket.raw.length === 0) loadOpenmarket();
     });
   });
 }
@@ -582,6 +584,7 @@ function showLoading(page, show) {
     qdii: { loading: 'qdiiLoading', table: 'qdiiTableContainer', hint: 'qdiiCacheHint' },
     enhance: { loading: 'enhanceLoading', table: 'enhanceTableContainer', hint: 'enhanceCacheHint' },
     futures: { loading: 'futuresLoading', table: 'futuresTableContainer', hint: 'futuresCacheHint' },
+    openmarket: { loading: 'openmarketLoading', table: 'openmarketTableContainer', hint: 'openmarketCacheHint' },
   };
   const ids = idMap[page];
   if (!ids) return;
@@ -590,6 +593,11 @@ function showLoading(page, show) {
   if (ids.hint) {
     const hintEl = document.getElementById(ids.hint);
     if (hintEl) hintEl.style.display = show ? 'none' : 'flex';
+  }
+  // 央行操作图表区域联动
+  if (page === 'openmarket') {
+    const chartSection = document.getElementById('omChartSection');
+    if (chartSection) chartSection.style.display = show ? 'none' : '';
   }
 }
 
@@ -605,7 +613,7 @@ function setRefreshBtnState(loading) {
 }
 
 function updateCacheHint(page, cached, fetchDateLocal) {
-  const hintMap = { lof: 'lofCacheHint', qdii: 'qdiiCacheHint', enhance: 'enhanceCacheHint' };
+  const hintMap = { lof: 'lofCacheHint', qdii: 'qdiiCacheHint', enhance: 'enhanceCacheHint', openmarket: 'openmarketCacheHint' };
   const el = document.getElementById(hintMap[page]);
   if (!el) return;
 
@@ -665,6 +673,7 @@ function initEvents() {
     else if (S.page === 'qdii') { S.qdii.raw = []; loadQdii(true); loadYieldData(true); }
     else if (S.page === 'enhance') { S.enhance.groups = []; loadEnhance(true); }
     else if (S.page === 'futures') { S.futures.raw = []; loadFutures(true); }
+    else if (S.page === 'openmarket') { S.openmarket.raw = []; loadOpenmarket(true); }
   });
 
   // ===== 列选择器（LOF + QDII + Enhance）=====
@@ -1670,7 +1679,7 @@ function updateSortIndicators(headRowId, sortKey) {
 
 // 通用表头排序点击处理
 function handleHeaderSortClick(page, key, selectId) {
-  const stateMap = { lof: S.lof, qdii: S.qdii, enhance: S.enhance, futures: S.futures };
+  const stateMap = { lof: S.lof, qdii: S.qdii, enhance: S.enhance, futures: S.futures, openmarket: S.openmarket };
   const state = stateMap[page];
   if (!state) return;
 
@@ -1694,12 +1703,444 @@ function handleHeaderSortClick(page, key, selectId) {
   }
 
   // 触发各页面的 apply 函数
-  const applyMap = { lof: applyLofFilters, qdii: applyQdiiFilters, enhance: applyEnhanceFilters, futures: applyFuturesFilters };
+  const applyMap = { lof: applyLofFilters, qdii: applyQdiiFilters, enhance: applyEnhanceFilters, futures: applyFuturesFilters, openmarket: applyOpenmarketFilters };
   if (applyMap[page]) applyMap[page]();
 }
 
 // 全局暴露
 window.showFuturesRiskDetail = showFuturesRiskDetail;
+
+// ==================== 央行公开市场操作 ====================
+
+async function loadOpenmarket(forceRefresh = false) {
+  if (S.openmarket.loading) return;
+  S.openmarket.loading = true;
+  showLoading('openmarket', true);
+  setRefreshBtnState(true);
+
+  try {
+    const url = `/api/openmarket?_=${Date.now()}${forceRefresh ? '&refresh=1' : ''}`;
+    const resp = await fetch(url);
+    const json = await resp.json();
+    if (!json.success || !json.data) throw new Error(json.error || '央行操作数据为空');
+
+    S.openmarket.raw = json.data;
+    applyOpenmarketFilters();
+    updateOpenmarketStats();
+    renderOpenmarketChart();
+    showLoading('openmarket', false);
+    updateCacheHint('openmarket', json.cached, json.fetchDateLocal);
+
+  } catch (err) {
+    console.error('央行操作加载失败:', err);
+    document.getElementById('openmarketLoading').innerHTML = errorHtml(err.message);
+  } finally {
+    S.openmarket.loading = false;
+    setRefreshBtnState(false);
+  }
+}
+
+function applyOpenmarketFilters() {
+  let d = [...S.openmarket.raw];
+
+  // 筛选
+  if (S.openmarket.filter === 'injection') d = d.filter(r => r.netAmount > 0);
+  else if (S.openmarket.filter === 'withdraw') d = d.filter(r => r.netAmount < 0);
+
+  // 排序
+  const sortKey = S.openmarket.sort || 'date_desc';
+  const [field, dir] = sortKey.split(/_(?=[^_]+$)/);
+  const isAsc = dir === 'asc';
+  const strFields = new Set(['date', 'netStatus']);
+
+  d.sort((a, b) => {
+    const va = a[field] ?? (isAsc ? Infinity : -Infinity);
+    const vb = b[field] ?? (isAsc ? Infinity : -Infinity);
+    let cmp;
+    if (strFields.has(field)) {
+      cmp = String(va).localeCompare(String(vb));
+    } else {
+      cmp = va - vb;
+    }
+    return isAsc ? cmp : -cmp;
+  });
+
+  S.openmarket.filtered = d;
+  renderOpenmarket();
+  updateSortIndicators('openmarketTableHead', S.openmarket.sort);
+}
+
+// 央行操作流动性趋势图表
+let omChart = null;
+const omChartState = {
+  chartType: 'bar',       // 'bar' | 'line'
+  series: { invest: true, maturity: true, net: true },
+};
+
+function renderOpenmarketChart() {
+  const data = S.openmarket.raw;
+  if (!data || data.length === 0) return;
+
+  // 显示图表区域
+  const section = document.getElementById('omChartSection');
+  if (section) section.style.display = '';
+
+  _buildOmChart();
+  _bindOmChartControls();
+}
+
+function _buildOmChart() {
+  const data = S.openmarket.raw;
+  if (!data || data.length === 0) return;
+
+  const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
+  const labels = sorted.map(d => {
+    const parts = d.date.split('-');
+    return `${parts[1]}-${parts[2]}`;
+  });
+
+  const investData = sorted.map(d => d.totalOperation || 0);
+  const maturityData = sorted.map(d => d.maturityTotal || 0);
+  const netData = sorted.map(d => d.netAmount || 0);
+
+  if (omChart) {
+    omChart.destroy();
+    omChart = null;
+  }
+
+  const container = document.querySelector('.om-chart-container');
+  container.innerHTML = '<canvas id="omLiquidityChart"></canvas>';
+  const ctx = document.getElementById('omLiquidityChart').getContext('2d');
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gridColor = isDark ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.12)';
+  const tickColor = isDark ? '#8899b4' : '#64748b';
+  const zeroLineColor = isDark ? 'rgba(148,163,184,0.2)' : 'rgba(148,163,184,0.3)';
+
+  const isLine = omChartState.chartType === 'line';
+  const vis = omChartState.series;
+
+  // 净投放颜色
+  const netBgColors = netData.map(v =>
+    v > 0 ? 'rgba(239, 68, 68, 0.65)' : v < 0 ? 'rgba(22, 163, 74, 0.65)' : 'rgba(148, 163, 184, 0.4)'
+  );
+  const netBorderColors = netData.map(v =>
+    v > 0 ? 'rgba(239, 68, 68, 0.9)' : v < 0 ? 'rgba(22, 163, 74, 0.9)' : 'rgba(148, 163, 184, 0.6)'
+  );
+
+  // 构建 datasets
+  const datasets = [];
+
+  if (vis.invest) {
+    datasets.push(isLine ? {
+      label: '投放量(亿)',
+      type: 'line',
+      data: investData,
+      borderColor: 'rgba(239, 68, 68, 0.7)',
+      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      pointBackgroundColor: 'rgba(239, 68, 68, 0.9)',
+      fill: true,
+      tension: 0.35,
+      order: 2,
+      yAxisID: 'y',
+    } : {
+      label: '投放量(亿)',
+      type: 'bar',
+      data: investData,
+      backgroundColor: 'rgba(239, 68, 68, 0.18)',
+      borderColor: 'rgba(239, 68, 68, 0.6)',
+      borderWidth: 1,
+      borderRadius: 3,
+      order: 2,
+      yAxisID: 'y',
+    });
+  }
+
+  if (vis.maturity) {
+    datasets.push(isLine ? {
+      label: '到期量(亿)',
+      type: 'line',
+      data: maturityData,
+      borderColor: 'rgba(59, 130, 246, 0.7)',
+      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      pointBackgroundColor: 'rgba(59, 130, 246, 0.9)',
+      fill: true,
+      tension: 0.35,
+      order: 3,
+      yAxisID: 'y',
+    } : {
+      label: '到期量(亿)',
+      type: 'bar',
+      data: maturityData,
+      backgroundColor: 'rgba(59, 130, 246, 0.18)',
+      borderColor: 'rgba(59, 130, 246, 0.6)',
+      borderWidth: 1,
+      borderRadius: 3,
+      order: 3,
+      yAxisID: 'y',
+    });
+  }
+
+  if (vis.net) {
+    datasets.push(isLine ? {
+      label: '净投放/回笼(亿)',
+      type: 'line',
+      data: netData,
+      borderColor: 'rgba(34, 197, 94, 0.7)',
+      backgroundColor: 'rgba(34, 197, 94, 0.06)',
+      borderWidth: 2.5,
+      pointRadius: 3.5,
+      pointHoverRadius: 6,
+      pointBackgroundColor: netData.map(v =>
+        v > 0 ? 'rgba(239, 68, 68, 0.9)' : v < 0 ? 'rgba(22, 163, 74, 0.9)' : 'rgba(148, 163, 184, 0.6)'
+      ),
+      segment: {
+        borderColor: ctx => {
+          const v = ctx.p1.parsed.y;
+          return v >= 0 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(22, 163, 74, 0.7)';
+        },
+      },
+      fill: false,
+      tension: 0.3,
+      order: 1,
+      yAxisID: 'y',
+    } : {
+      label: '净投放/回笼(亿)',
+      type: 'bar',
+      data: netData,
+      backgroundColor: netBgColors,
+      borderColor: netBorderColors,
+      borderWidth: 1.5,
+      borderRadius: 4,
+      order: 1,
+      yAxisID: 'y',
+    });
+  }
+
+  omChart = new Chart(ctx, {
+    type: isLine ? 'line' : 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: isDark ? 'rgba(15,23,42,0.95)' : 'rgba(15,23,42,0.9)',
+          titleFont: { family: "'Noto Sans SC', sans-serif", size: 12 },
+          bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
+          padding: 12,
+          cornerRadius: 8,
+          callbacks: {
+            title: ctx => {
+              const idx = ctx[0]?.dataIndex;
+              if (idx == null) return '';
+              const item = sorted[idx];
+              const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+              const d = new Date(item.date + 'T00:00:00+08:00');
+              return `${item.date} ${weekDays[d.getDay()]}`;
+            },
+            label: ctx => {
+              const v = ctx.raw;
+              if (v == null) return '';
+              const sign = v > 0 ? '+' : '';
+              const label = ctx.dataset.label.replace('(亿)', '');
+              return ` ${label}: ${sign}${v} 亿`;
+            },
+            afterBody: ctx => {
+              const idx = ctx[0]?.dataIndex;
+              if (idx == null) return '';
+              const item = sorted[idx];
+              if (item.operations && item.operations.length > 0) {
+                const ops = item.operations.map(op => `  ${op.type} ${op.term || ''} ${op.amount}亿`);
+                return ['\n操作明细:', ...ops];
+              }
+              return '';
+            }
+          }
+        },
+      },
+      scales: {
+        y: {
+          position: 'left',
+          grid: {
+            color: ctx => ctx.tick.value === 0 ? zeroLineColor : gridColor,
+            lineWidth: ctx => ctx.tick.value === 0 ? 1.5 : 0.8,
+          },
+          ticks: {
+            callback: v => {
+              if (Math.abs(v) >= 10000) return (v / 10000).toFixed(1) + '万亿';
+              return v.toLocaleString() + '亿';
+            },
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            color: tickColor,
+            maxTicksLimit: 6,
+          },
+          border: { display: false },
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            color: tickColor,
+          },
+          border: { display: false },
+        },
+      },
+    }
+  });
+}
+
+function _bindOmChartControls() {
+  // 图表类型切换
+  document.querySelectorAll('.om-type-btn').forEach(btn => {
+    btn.onclick = () => {
+      const type = btn.dataset.chartType;
+      if (type === omChartState.chartType) return;
+      omChartState.chartType = type;
+      document.querySelectorAll('.om-type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _buildOmChart();
+    };
+  });
+
+  // 数据系列显隐
+  document.querySelectorAll('.om-legend-btn').forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.series;
+      // 至少保留一个系列可见
+      const vis = omChartState.series;
+      const willHide = vis[key];
+      if (willHide) {
+        const visCount = Object.values(vis).filter(Boolean).length;
+        if (visCount <= 1) return; // 不允许全部隐藏
+      }
+      vis[key] = !vis[key];
+      btn.classList.toggle('active', vis[key]);
+      _buildOmChart();
+    };
+  });
+}
+
+function renderOpenmarket() {
+  const tbody = document.getElementById('openmarketTableBody');
+  const d = S.openmarket.filtered;
+  const colCount = 8;
+
+  if (!d.length) {
+    tbody.innerHTML = emptyRow(colCount, '暂无数据', '没有获取到央行公开市场操作数据');
+    return;
+  }
+
+  tbody.innerHTML = d.map((r, i) => {
+    // 操作明细
+    const opsHtml = r.operations.map(op =>
+      `<span class="om-op-tag">${op.type} ${op.term} ${op.amount}亿</span>`
+    ).join(' ');
+
+    // 净投放状态
+    const netCls = r.netAmount > 0 ? 'om-net-inject' : r.netAmount < 0 ? 'om-net-withdraw' : 'om-net-zero';
+    const netSign = r.netAmount > 0 ? '+' : '';
+
+    // 状态标签
+    let statusHtml;
+    if (r.netStatus === '净投放') {
+      statusHtml = '<span class="om-status-badge om-status-inject">净投放</span>';
+    } else if (r.netStatus === '净回笼') {
+      statusHtml = '<span class="om-status-badge om-status-withdraw">净回笼</span>';
+    } else {
+      statusHtml = '<span class="om-status-badge om-status-zero">零投放</span>';
+    }
+
+    // 日期格式化（显示星期）
+    const d = new Date(r.date + 'T00:00:00+08:00');
+    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const dateDisplay = `${r.date} ${weekDays[d.getDay()]}`;
+
+    // 数据来源链接
+    const sourceLink = r.source
+      ? `<a class="om-source-link" href="${r.source}" target="_blank" rel="noopener" title="查看原始新闻">&#x1F517;</a>`
+      : '';
+
+    return `<tr>
+      <td class="cell-index">${i + 1}</td>
+      <td class="cell-om-date">${dateDisplay}${sourceLink}</td>
+      <td class="cell-om-ops">${opsHtml}</td>
+      <td class="cell-om-total">${r.totalOperation}</td>
+      <td class="cell-om-maturity">${r.maturityTotal || '--'}</td>
+      <td class="cell-om-net ${netCls}">${r.netAmount !== 0 ? netSign + r.netAmount : '0'}</td>
+      <td class="cell-om-rate">${r.rate != null ? r.rate.toFixed(2) + '%' : '--'}</td>
+      <td class="cell-om-status">${statusHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateOpenmarketStats() {
+  const d = S.openmarket.raw;
+  if (d.length === 0) return;
+
+  // 最近操作日
+  setText('omStatDate', d[0].date ? d[0].date.slice(5) : '--');
+
+  // 最近净投放/回笼
+  const latestNet = d[0].netAmount;
+  setText('omStatNet', (latestNet > 0 ? '+' : '') + latestNet);
+  const netEl = document.getElementById('omStatNet');
+  if (netEl) {
+    netEl.style.color = latestNet > 0 ? 'var(--red)' : latestNet < 0 ? 'var(--green)' : '';
+  }
+  setText('omStatNetSub', d[0].netStatus || '亿元');
+
+  // 最新逆回购利率
+  const rateDay = d.find(r => r.rate != null);
+  setText('omStatRate', rateDay ? rateDay.rate.toFixed(2) + '%' : '--%');
+
+  // 近10日净回笼天数
+  const recent10 = d.slice(0, 10);
+  const withdrawDays = recent10.filter(r => r.netAmount < 0).length;
+  setText('omStatWithdraw', withdrawDays);
+
+  // 更新时间
+  const t = new Date();
+  setText('omStatTime', `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`);
+}
+
+function initOpenmarketEvents() {
+  // 筛选按钮
+  document.querySelectorAll('.filter-btn[data-page="openmarket"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn[data-page="openmarket"]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      S.openmarket.filter = btn.dataset.filter;
+      applyOpenmarketFilters();
+    });
+  });
+
+  // 下拉排序
+  document.getElementById('sortOpenmarket').addEventListener('change', e => {
+    S.openmarket.sort = e.target.value;
+    applyOpenmarketFilters();
+  });
+
+  // 表头排序
+  document.querySelectorAll('#openmarketTableHead .th-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (!key) return;
+      handleHeaderSortClick('openmarket', key, 'sortOpenmarket');
+    });
+  });
+}
 
 // ==================== Init ====================
 document.addEventListener('DOMContentLoaded', () => {
@@ -1707,6 +2148,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNav();
   initEvents();
   initFuturesEvents();
+  initOpenmarketEvents();
   updateMarketStatus();
   setInterval(updateMarketStatus, 60000);
   loadLof();

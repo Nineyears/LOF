@@ -1,0 +1,167 @@
+{
+  "fetchDate": "2026-04-04T17:53:02.942Z",
+  "fetchDateLocal": "2026/4/5 01:53:02",
+  "count": 10,
+  "data": [
+    {
+      "date": "2026-04-07",
+      "operations": [
+        {
+          "amount": 8000,
+          "term": "3个月",
+          "type": "买断式逆回购"
+        }
+      ],
+      "totalOperation": 8000,
+      "maturityTotal": 11000,
+      "netAmount": -3000,
+      "netStatus": "净回笼",
+      "rate": null,
+      "source": "http://finance.eastmoney.com/a/202604043695553513.html"
+    },
+    {
+      "date": "2026-04-03",
+      "operations": [
+        {
+          "amount": 10,
+          "term": "7天",
+          "type": "逆回购"
+        }
+      ],
+      "totalOperation": 10,
+      "maturityTotal": 0,
+      "netAmount": 10,
+      "netStatus": "净投放",
+      "rate": 1.4,
+      "source": "http://finance.eastmoney.com/a/202604033694533613.html"
+    },
+    {
+      "date": "2026-04-02",
+      "operations": [
+        {
+          "amount": 5,
+          "term": "7天",
+          "type": "逆回购"
+        }
+      ],
+      "totalOperation": 5,
+      "maturityTotal": 785,
+      "netAmount": -780,
+      "netStatus": "净回笼",
+      "rate": 1.4,
+      "source": "http://finance.eastmoney.com/a/202604023692910234.html"
+    },
+    {
+      "date": "2026-04-01",
+      "operations": [
+        {
+          "amount": 5,
+          "term": "7天",
+          "type": "逆回购"
+        }
+      ],
+      "totalOperation": 5,
+      "maturityTotal": 785,
+      "netAmount": -780,
+      "netStatus": "净回笼",
+      "rate": 1.4,
+      "source": "http://finance.eastmoney.com/a/202604013692417723.html"
+    },
+    {
+      "date": "2026-03-31",
+      "operations": [
+        {
+          "amount": 325,
+          "term": "7天",
+          "type": "逆回购"
+        }
+      ],
+      "totalOperation": 325,
+      "maturityTotal": 0,
+      "netAmount": 325,
+      "netStatus": "净投放",
+      "rate": 1.4,
+      "source": "http://finance.eastmoney.com/a/202603313689830922.html"
+    },
+    {
+      "date": "2026-03-30",
+      "operations": [
+        {
+          "amount": 2695,
+          "term": "7天",
+          "type": "逆回购"
+        }
+      ],
+      "totalOperation": 2695,
+      "maturityTotal": 80,
+      "netAmount": 2615,
+      "netStatus": "净投放",
+      "rate": 1.4,
+      "source": "http://finance.eastmoney.com/a/202603303689318691.html"
+    },
+    {
+      "date": "2026-03-25",
+      "operations": [
+        {
+          "amount": 5000,
+          "term": "1年",
+          "type": "MLF"
+        }
+      ],
+      "totalOperation": 5000,
+      "maturityTotal": 4500,
+      "netAmount": 500,
+      "netStatus": "净投放",
+      "rate": null,
+      "source": "http://finance.eastmoney.com/a/202603253684041082.html"
+    },
+    {
+      "date": "2026-03-24",
+      "operations": [
+        {
+          "amount": 5000,
+          "term": "",
+          "type": "MLF"
+        }
+      ],
+      "totalOperation": 5000,
+      "maturityTotal": 4500,
+      "netAmount": 500,
+      "netStatus": "净投放",
+      "rate": null,
+      "source": "http://finance.eastmoney.com/a/202603243682963156.html"
+    },
+    {
+      "date": "2026-03-16",
+      "operations": [
+        {
+          "amount": 5000,
+          "term": "6个月",
+          "type": "买断式逆回购"
+        }
+      ],
+      "totalOperation": 5000,
+      "maturityTotal": 0,
+      "netAmount": 5000,
+      "netStatus": "净投放",
+      "rate": null,
+      "source": "http://finance.eastmoney.com/a/202603163672998166.html"
+    },
+    {
+      "date": "2026-03-06",
+      "operations": [
+        {
+          "amount": 8000,
+          "term": "3个月",
+          "type": "买断式逆回购"
+        }
+      ],
+      "totalOperation": 8000,
+      "maturityTotal": 10000,
+      "netAmount": -2000,
+      "netStatus": "净回笼",
+      "rate": null,
+      "source": "http://finance.eastmoney.com/a/202603063663535090.html"
+    }
+  ]
+}
